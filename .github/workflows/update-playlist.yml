@@ -1,88 +1,98 @@
 name: IPTV Playlist Auto Update
 
 on:
-workflow_dispatch:
-schedule:
-- cron: "*/15 * * * *"
+  workflow_dispatch:
+  schedule:
+    - cron: "*/15 * * * *"
 
 permissions:
-contents: write
+  contents: write
+
+# Prevent overlapping runs from racing each other on the same push.
+concurrency:
+  group: iptv-playlist-update
+  cancel-in-progress: false
 
 jobs:
-playlist:
-runs-on: ubuntu-latest
+  playlist:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
 
-steps:
-  - name: Checkout Repository
-    uses: actions/checkout@v4
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-  - name: Setup Python
-    uses: actions/setup-python@v5
-    with:
-      python-version: "3.11"
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
 
-  - name: Install Dependencies
-    run: |
-      python -m pip install --upgrade pip
-      pip install -r requirements.txt
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-  - name: Extract ZIP
-    env:
-      ZIP_PASSWORD: ${{ secrets.ZIP_PASSWORD }}
-    run: |
-      python - <<'PY'
-      import os
-      from pathlib import Path
-      import pyzipper
+      - name: Extract ZIP
+        env:
+          ZIP_PASSWORD: ${{ secrets.ZIP_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import pyzipper
 
-      password = os.environ.get("ZIP_PASSWORD")
-      files = list(Path(".").glob("*.zip"))
+          password = os.environ.get("ZIP_PASSWORD") or None
+          files = sorted(Path(".").glob("*.zip"))
 
-      for file in files:
-          print("Extracting:", file.name)
+          if not files:
+              print("No ZIP files found.")
 
-          with pyzipper.AESZipFile(file) as archive:
-              pwd = password.encode() if password else None
-              archive.extractall(".", pwd=pwd)
+          for file in files:
+              print("Extracting:", file.name)
 
-      print("Extraction completed.")
-      PY
+              with pyzipper.AESZipFile(file) as archive:
+                  archive.extractall(".", pwd=password.encode() if password else None)
 
-  - name: Locate Python Script
-    run: |
-      echo "Searching for generate_playlist.py"
+          print("Extraction completed.")
+          PY
 
-      find . -name "generate_playlist.py" -type f
+      - name: Locate Python Script
+        run: |
+          if [ ! -f generate_playlist.py ]; then
+            echo "ERROR: generate_playlist.py not found in repository root."
+            exit 1
+          fi
+          echo "Found generate_playlist.py"
 
-      if [ ! -f generate_playlist.py ]; then
-        echo "ERROR: Script not found in repository root."
-        exit 1
-      fi
+      - name: Generate Playlist
+        run: |
+          python generate_playlist.py
 
-  - name: Generate Playlist
-    run: |
-      python generate_playlist.py
+      - name: Check Output
+        run: |
+          if [ ! -s IPTV/onlinetv.m3u8 ]; then
+            echo "ERROR: Playlist missing or empty!"
+            exit 1
+          fi
 
-  - name: Check Output
-    run: |
-      if [ ! -s IPTV/onlinetv.m3u8 ]; then
-        echo "ERROR: Playlist missing or empty!"
-        exit 1
-      fi
+          echo "Playlist generated successfully!"
+          ls -lh IPTV/onlinetv.m3u8
 
-      echo "Playlist generated successfully!"
-      ls -lh IPTV/onlinetv.m3u8
+      - name: Commit Playlist
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-  - name: Commit Playlist
-    run: |
-      git config user.name "github-actions[bot]"
-      git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add IPTV/onlinetv.m3u8
 
-      git add IPTV/onlinetv.m3u8
+          if git diff --cached --quiet; then
+            echo "No changes detected."
+            exit 0
+          fi
 
-      if git diff --cached --quiet; then
-        echo "No changes detected."
-      else
-        git commit -m "Auto Update IPTV Playlist"
-        git push
-      fi
+          git commit -m "Auto Update IPTV Playlist"
+
+          # Rebase onto any newer remote commits before pushing.
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
