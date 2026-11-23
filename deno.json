@@ -1,5 +1,12 @@
 {
   "tasks": {
     "update": "deno run --allow-env --allow-net --allow-read --allow-write --allow-run src/main.ts"
+  },
+  "compilerOptions": {
+    "strict": true
+  },
+  "fmt": {
+    "lineWidth": 80,
+    "indentWidth": 2
   }
 }
