@@ -3,7 +3,7 @@ name: TOFFE AUTO BOT
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */1 * * *"   # every 6 hours
+    - cron: "0 */6 * * *"   # every 6 hours (UTC)
   push:
     branches: [main]
 
@@ -26,6 +26,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install pyzipper
 
+      - name: Debug secret (safe)
+        if: ${{ secrets.BD_OTT_ZIP_PASS != '' }}
+        env:
+          P: ${{ secrets.BD_OTT_ZIP_PASS }}
+        run: |
+          python - <<'PY'
+          import os
+          p = os.environ.get("P", "")
+          print("secret exists:", bool(p))
+          print("length:", len(p))
+          print("has leading/trailing whitespace:", p != p.strip())
+          PY
+
       - name: Extract PRO_OTT_BD.py
         env:
           BD_OTT_ZIP_PASS: ${{ secrets.BD_OTT_ZIP_PASS }}
@@ -36,15 +49,17 @@ jobs:
           from pathlib import Path
 
           archive = Path("PRO_OTT_BD.zip")
-          password = os.environ.get("BD_OTT_ZIP_PASS")
-
-          if not password:
-              sys.exit("BD_OTT_ZIP_PASS GitHub Secret is missing!")
+          raw = os.environ.get("BD_OTT_ZIP_PASS", "")
+          if not raw:
+              sys.exit("BD_OTT_ZIP_PASS secret is missing/empty for this event.")
           if not archive.exists():
-              sys.exit("PRO_OTT_BD.zip not found!")
+              sys.exit("PRO_OTT_BD.zip not found in repo root.")
+
+          password = raw.strip().encode("utf-8")
+          print(f"Password length used: {len(password)}")
 
           with pyzipper.AESZipFile(archive, "r") as z:
-              z.setpassword(password.strip().encode("utf-8"))
+              z.setpassword(password)
               files = z.namelist()
               print("ZIP contents:", files)
 
@@ -54,7 +69,16 @@ jobs:
               )
               if target is None:
                   sys.exit("PRO_OTT_BD.py not found inside ZIP!")
-              content = z.read(target)
+
+              try:
+                  content = z.read(target)
+              except RuntimeError as e:
+                  sys.exit(
+                      f"Decryption failed: {e}\n"
+                      "The BD_OTT_ZIP_PASS secret does NOT match the zip password.\n"
+                      "Fix: re-enter the secret in Settings → Secrets → Actions, "
+                      "or recreate the zip with the same password."
+                  )
 
           Path("PRO_OTT_BD.py").write_bytes(content)
           print(f"Extracted PRO_OTT_BD.py ({len(content)} bytes)")
