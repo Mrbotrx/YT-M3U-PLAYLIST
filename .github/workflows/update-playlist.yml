@@ -1,15 +1,17 @@
 name: Update IPTV Playlist
 
-on:
+"on":
 workflow_dispatch:
+
 schedule:
-- cron: '*/15 * * * *'
+- cron: "*/15 * * * *"
 
 permissions:
 contents: write
 
 jobs:
 update-playlist:
+name: Generate IPTV Playlist
 runs-on: ubuntu-latest
 
 steps:
@@ -19,69 +21,58 @@ steps:
   - name: Setup Python
     uses: actions/setup-python@v5
     with:
-      python-version: '3.11'
+      python-version: "3.11"
 
-  - name: Install Dependencies
+  - name: Install Requirements
     run: |
       python -m pip install --upgrade pip
-      if [ -f requirements.txt ]; then
-        pip install -r requirements.txt
-      else
-        pip install requests pyzipper
-      fi
+      pip install -r requirements.txt
 
-  - name: Extract ZIP and Generate Playlist
+  - name: Extract ZIP Files
     env:
       ZIP_PASSWORD: ${{ secrets.ZIP_PASSWORD }}
     run: |
       python - <<'PY'
       import os
-      import zipfile
-      import pyzipper
       from pathlib import Path
+      import pyzipper
 
       password = os.environ.get("ZIP_PASSWORD")
-      root = Path(".")
+      zip_files = list(Path(".").glob("*.zip"))
 
-      zip_files = list(root.glob("*.zip"))
+      for zip_file in zip_files:
+          print(f"Extracting {zip_file.name}")
 
-      if not zip_files:
-          print("No ZIP file found. Checking repository files...")
+          with pyzipper.AESZipFile(zip_file) as archive:
+              pwd = password.encode() if password else None
+              archive.extractall(".", pwd=pwd)
 
-      for z in zip_files:
-          print("Extracting:", z.name)
-
-          try:
-              with pyzipper.AESZipFile(z) as archive:
-                  pwd = password.encode() if password else None
-                  archive.extractall(path=".", pwd=pwd)
-              print("Extraction completed.")
-          except Exception as e:
-              print("Extraction failed:", e)
-              raise
-
-      script = Path("generate_playlist.py")
-
-      if not script.exists():
-          raise FileNotFoundError(
-              "generate_playlist.py not found after extraction."
-          )
-
+      print("ZIP extraction completed.")
       PY
 
+  - name: Check Python Script
+    run: |
+      if [ ! -f generate_playlist.py ]; then
+        echo "ERROR: generate_playlist.py not found!"
+        find . -maxdepth 4 -type f
+        exit 1
+      fi
+
+  - name: Generate Playlist
+    run: |
       python generate_playlist.py
 
   - name: Verify Playlist
     run: |
       if [ ! -f IPTV/onlinetv.m3u8 ]; then
-        echo "Playlist not generated!"
+        echo "ERROR: IPTV/onlinetv.m3u8 not found!"
         exit 1
       fi
 
-      echo "Playlist generated successfully."
-      ls -lh IPTV/onlinetv.m3u8
+      echo "Playlist generated successfully!"
+      wc -l IPTV/onlinetv.m3u8
 
-  - name: Commit and Push
+  - name: Commit Changes
     run: |
       git config user.name "github-actions[bot]"
       git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -89,8 +80,8 @@ steps:
       git add IPTV/onlinetv.m3u8
 
       if git diff --cached --quiet; then
-        echo "No playlist changes."
+        echo "No changes to commit."
       else
-        git commit -m "Update IPTV Playlist"
+        git commit -m "Auto Update IPTV Playlist"
         git push
       fi
