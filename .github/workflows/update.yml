@@ -4,9 +4,7 @@ on:
   push:
     branches:
       - main
-
   pull_request:
-
   workflow_dispatch:
 
 jobs:
@@ -17,17 +15,25 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract project ZIP
+      - name: Install 7-Zip
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full
+
+      - name: Extract encrypted ZIP
+        env:
+          ZIP_PASSWORD: ${{ secrets.ZIP_PASSWORD }}
         run: |
           mkdir -p project
-          unzip -o KB-PRO-TV-Encrypted.zip -d project
+          7z x KB-PRO-TV-Encrypted.zip \
+            -oproject \
+            -p"$ZIP_PASSWORD" \
+            -y
 
-      - name: Verify deno.json
+      - name: Verify project
         run: |
-          if [ ! -f project/deno.json ]; then
-            echo "ERROR: deno.json not found!"
-            exit 1
-          fi
+          test -f project/deno.json
+          test -f project/src/main.ts
 
       - name: Setup Deno
         uses: denoland/setup-deno@v2
