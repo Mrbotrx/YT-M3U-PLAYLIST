@@ -11,22 +11,28 @@ permissions:
 
 jobs:
   update:
+
     runs-on: ubuntu-latest
 
     steps:
+
+      # Checkout
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      # Python
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+      # Install
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests==2.32.5 pyzipper==0.3.6
+          pip install -r requirements.txt
 
+      # Extract ZIP
       - name: Extract Protected ZIP
         env:
           ZIP_PASSWORD: ${{ secrets.ZIP_PASSWORD }}
@@ -34,16 +40,17 @@ jobs:
           python - <<'PY'
           import os
           import pyzipper
+          from pathlib import Path
 
           password = os.environ.get("ZIP_PASSWORD")
 
           if not password:
-              raise RuntimeError("ZIP_PASSWORD secret is missing")
+              raise RuntimeError("ZIP_PASSWORD Secret is missing")
 
-          zip_path = "generate_playlist.zip"
+          zip_path = Path("generate_playlist.zip")
 
-          if not os.path.exists(zip_path):
-              raise FileNotFoundError(zip_path)
+          if not zip_path.exists():
+              raise FileNotFoundError("generate_playlist.zip not found")
 
           with pyzipper.AESZipFile(zip_path, "r") as archive:
               archive.extractall(
@@ -54,28 +61,45 @@ jobs:
           print("ZIP extracted successfully")
           PY
 
+      # Find Script
       - name: Locate Python Script
         run: |
           SCRIPT=$(find source -type f -name "generate_playlist.py" -print -quit)
 
           if [ -z "$SCRIPT" ]; then
-            echo "generate_playlist.py not found inside ZIP"
+            echo "ERROR: generate_playlist.py not found inside ZIP"
             find source -type f
             exit 1
           fi
 
-          echo "SCRIPT=$SCRIPT" >> $GITHUB_ENV
+          echo "SCRIPT=$SCRIPT" >> "$GITHUB_ENV"
+
           echo "Found script: $SCRIPT"
 
+      # Run Script
       - name: Generate IPTV Playlist
         env:
           ZIP_PASSWORD: ${{ secrets.ZIP_PASSWORD }}
         run: |
           python "$SCRIPT"
 
-      - name: Commit Playlist
+      # Verify Output
+      - name: Verify Playlist
+        run: |
+          if [ ! -f IPTV/onlinetv.m3u8 ]; then
+            echo "Playlist file not found!"
+            exit 1
+          fi
+
+          echo "Playlist successfully generated"
+          ls -lh IPTV/onlinetv.m3u8
+          ls -lh archives/
+
+      # Commit
+      - name: Commit and Push
         run: |
           git config user.name "github-actions[bot]"
+
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add IPTV/ archives/
