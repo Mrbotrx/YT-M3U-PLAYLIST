@@ -1,37 +1,39 @@
 name: Check project
 
 on:
-push:
-branches:
-- main
-pull_request:
-workflow_dispatch:
+  push:
+    branches:
+      - main
+
+  pull_request:
+
+  workflow_dispatch:
 
 jobs:
-check:
-runs-on: ubuntu-latest
+  check:
+    runs-on: ubuntu-latest
 
-steps:
-  - name: Checkout repository
-    uses: actions/checkout@v4
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-  - name: Extract project ZIP
-    run: |
-      mkdir -p project
-      unzip -o KB-PRO-TV-Encrypted.zip -d project
+      - name: Extract project ZIP
+        run: |
+          mkdir -p project
+          unzip -o KB-PRO-TV-Encrypted.zip -d project
 
-  - name: Verify deno.json
-    run: |
-      test -f project/deno.json || {
-        echo "ERROR: deno.json not found!"
-        exit 1
-      }
+      - name: Verify deno.json
+        run: |
+          if [ ! -f project/deno.json ]; then
+            echo "ERROR: deno.json not found!"
+            exit 1
+          fi
 
-  - name: Setup Deno
-    uses: denoland/setup-deno@v2
-    with:
-      deno-version: v2.x
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
 
-  - name: Check project
-    working-directory: project
-    run: deno task check
+      - name: Check project
+        working-directory: project
+        run: deno task check
