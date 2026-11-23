@@ -1,9 +1,37 @@
-- name: KB.bot
+name: TOFFE AUTO BOT
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */1 * * *"   # every 6 hours
+  push:
+    branches: [main]
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyzipper
+
+      - name: Extract PRO_OTT_BD.py
         env:
           BD_OTT_ZIP_PASS: ${{ secrets.BD_OTT_ZIP_PASS }}
         run: |
           python - <<'PY'
-          import os
+          import os, sys
           import pyzipper
           from pathlib import Path
 
@@ -11,38 +39,25 @@
           password = os.environ.get("BD_OTT_ZIP_PASS")
 
           if not password:
-              raise RuntimeError(
-                  "BD_OTT_ZIP_PASS GitHub Secret is missing!"
-              )
-
+              sys.exit("BD_OTT_ZIP_PASS GitHub Secret is missing!")
           if not archive.exists():
-              raise FileNotFoundError("PRO_OTT_BD.zip not found!")
+              sys.exit("PRO_OTT_BD.zip not found!")
 
           with pyzipper.AESZipFile(archive, "r") as z:
-              z.setpassword(password.encode("utf-8"))
-
+              z.setpassword(password.strip().encode("utf-8"))
               files = z.namelist()
-
               print("ZIP contents:", files)
 
               target = next(
-                  (
-                      name for name in files
-                      if Path(name).name == "PRO_OTT_BD.py"
-                  ),
-                  None
+                  (n for n in files if Path(n).name == "PRO_OTT_BD.py"),
+                  None,
               )
-
               if target is None:
-                  raise FileNotFoundError(
-                      "PRO_OTT_BD.py not found inside ZIP!"
-                  )
-
+                  sys.exit("PRO_OTT_BD.py not found inside ZIP!")
               content = z.read(target)
 
-              Path("PRO_OTT_BD.py").write_bytes(content)
-
-          print("Extraction successful!")
+          Path("PRO_OTT_BD.py").write_bytes(content)
+          print(f"Extracted PRO_OTT_BD.py ({len(content)} bytes)")
           PY
 
       - name: Verify Python File
@@ -50,3 +65,9 @@
           test -s PRO_OTT_BD.py
           python -m py_compile PRO_OTT_BD.py
           echo "PRO_OTT_BD.py is ready!"
+
+      - name: Run TOFFE AUTO BOT
+        env:
+          BD_OTT_ZIP_PASS: ${{ secrets.BD_OTT_ZIP_PASS }}
+        run: |
+          python PRO_OTT_BD.py
