@@ -1,4 +1,4 @@
-name: ONLINE  IPTV
+name: IPTV Playlist MAKE BD
 
 on:
   workflow_dispatch:
@@ -34,15 +34,54 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Generate Working Channels
+      - name: Find Python Script
+        id: find_script
         run: |
-          python generate_playlist.py
 
-      - name: Commit Playlist
+          echo "Searching for generate_playlist.py..."
+
+          SCRIPT=$(find . -type f \
+            -name "generate_playlist.py" \
+            -not -path "./.git/*" \
+            | head -n 1)
+
+          if [ -z "$SCRIPT" ]; then
+            echo "ERROR: generate_playlist.py not found!"
+            echo "Repository files:"
+            find . -maxdepth 4 -type f
+            exit 1
+          fi
+
+          echo "Found script: $SCRIPT"
+
+          echo "script=$SCRIPT" >> "$GITHUB_OUTPUT"
+
+      - name: Generate Playlist
+        run: |
+          python "${{ steps.find_script.outputs.script }}"
+
+      - name: Verify Playlist
+        run: |
+
+          if [ ! -s IPTV/onlinetv.m3u8 ]; then
+            echo "ERROR: Playlist not generated!"
+            exit 1
+          fi
+
+          echo "Playlist generated successfully."
+
+          echo "Total lines:"
+          wc -l IPTV/onlinetv.m3u8
+
+          head -n 10 IPTV/onlinetv.m3u8
+
+      - name: Commit Changes
         run: |
 
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add IPTV/onlinetv.m3u8
 
@@ -54,6 +93,6 @@ jobs:
 
           else
 
-            echo "No playlist changes detected."
+            echo "No changes to commit."
 
           fi
