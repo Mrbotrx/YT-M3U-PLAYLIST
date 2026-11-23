@@ -1,44 +1,96 @@
- name: IPTV Playlist BD ONLINE
+name: Update IPTV Playlist
 
-'on':
-  workflow_dispatch:
-
-  schedule:
-    - cron: '0 */3 * * *'
-
-  push:
-    branches:
-      - main
+on:
+workflow_dispatch:
+schedule:
+- cron: '*/15 * * * *'
 
 permissions:
-  contents: write
+contents: write
 
 jobs:
-  update-playlist:
-    runs-on: ubuntu-latest
+update-playlist:
+runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+steps:
+  - name: Checkout Repository
+    uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+  - name: Setup Python
+    uses: actions/setup-python@v5
+    with:
+      python-version: '3.11'
 
-      - name: Install Requirements
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+  - name: Install Dependencies
+    run: |
+      python -m pip install --upgrade pip
+      if [ -f requirements.txt ]; then
+        pip install -r requirements.txt
+      else
+        pip install requests pyzipper
+      fi
 
-      - name: Generate Playlist
-        run: |
-          python generate_playlist.py
+  - name: Extract ZIP and Generate Playlist
+    env:
+      ZIP_PASSWORD: ${{ secrets.ZIP_PASSWORD }}
+    run: |
+      python - <<'PY'
+      import os
+      import zipfile
+      import pyzipper
+      from pathlib import Path
 
-      - name: Commit Updated Playlist
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add IPTV/onlinetv.m3u8
-          git diff --cached --quiet || git commit -m "Update IPTV Playlist"
-          git push
+      password = os.environ.get("ZIP_PASSWORD")
+      root = Path(".")
+
+      zip_files = list(root.glob("*.zip"))
+
+      if not zip_files:
+          print("No ZIP file found. Checking repository files...")
+
+      for z in zip_files:
+          print("Extracting:", z.name)
+
+          try:
+              with pyzipper.AESZipFile(z) as archive:
+                  pwd = password.encode() if password else None
+                  archive.extractall(path=".", pwd=pwd)
+              print("Extraction completed.")
+          except Exception as e:
+              print("Extraction failed:", e)
+              raise
+
+      script = Path("generate_playlist.py")
+
+      if not script.exists():
+          raise FileNotFoundError(
+              "generate_playlist.py not found after extraction."
+          )
+
+      PY
+
+      python generate_playlist.py
+
+  - name: Verify Playlist
+    run: |
+      if [ ! -f IPTV/onlinetv.m3u8 ]; then
+        echo "Playlist not generated!"
+        exit 1
+      fi
+
+      echo "Playlist generated successfully."
+      ls -lh IPTV/onlinetv.m3u8
+
+  - name: Commit and Push
+    run: |
+      git config user.name "github-actions[bot]"
+      git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      git add IPTV/onlinetv.m3u8
+
+      if git diff --cached --quiet; then
+        echo "No playlist changes."
+      else
+        git commit -m "Update IPTV Playlist"
+        git push
+      fi
