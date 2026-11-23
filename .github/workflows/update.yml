@@ -2,7 +2,8 @@ name: Check project
 
 on:
 push:
-branches: [main]
+branches:
+- main
 pull_request:
 workflow_dispatch:
 
@@ -18,6 +19,13 @@ steps:
     run: |
       mkdir -p project
       unzip -o KB-PRO-TV-Encrypted.zip -d project
+
+  - name: Verify deno.json
+    run: |
+      test -f project/deno.json || {
+        echo "ERROR: deno.json not found!"
+        exit 1
+      }
 
   - name: Setup Deno
     uses: denoland/setup-deno@v2
