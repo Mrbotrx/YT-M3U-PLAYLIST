@@ -1,15 +1,29 @@
 name: Check project
+
 on:
-  push:
-    branches: [main]
-  pull_request:
-  workflow_dispatch:
+push:
+branches: [main]
+pull_request:
+workflow_dispatch:
+
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-      - run: deno task check
+check:
+runs-on: ubuntu-latest
+
+steps:
+  - name: Checkout repository
+    uses: actions/checkout@v4
+
+  - name: Extract project ZIP
+    run: |
+      mkdir -p project
+      unzip -o KB-PRO-TV-Encrypted.zip -d project
+
+  - name: Setup Deno
+    uses: denoland/setup-deno@v2
+    with:
+      deno-version: v2.x
+
+  - name: Check project
+    working-directory: project
+    run: deno task check
