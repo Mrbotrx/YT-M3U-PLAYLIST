@@ -1,0 +1,57 @@
+name: YT-M3U-PLAYLIST AUTO UPDATE
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    - cron: "*/15 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yt-m3u-playlist
+  cancel-in-progress: false
+
+jobs:
+  playlist-generator:
+
+    runs-on: ubuntu-latest
+
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install yt-dlp
+        run: |
+          python -m pip install --upgrade yt-dlp
+
+      - name: Generate Playlist
+        env:
+          YT_PLAYLIST_URL: ${{ secrets.YT_PLAYLIST_URL }}
+        run: |
+          deno task update
+
+      - name: Commit Files
+        run: |
+          git config user.name "YT M3U BOT"
+          git config user.email "actions@github.com"
+
+          git add YT-M3U-PLAYLIST.m3u logo.jpg
+
+          git diff --cached --quiet || \
+            git commit -m "Automatic Playlist Update"
+
+          git push
