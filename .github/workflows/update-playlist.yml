@@ -1,4 +1,4 @@
-name: IPTV Playlist BD ONLINE
+ name: IPTV Playlist BD ONLINE
 
 'on':
   workflow_dispatch:
@@ -31,71 +31,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Extract ZIP Using Python
-        run: |
-          python - <<'PY'
-          import zipfile
-          import os
-
-          archive = "generate_playlist.zip"
-          destination = "extracted"
-
-          os.makedirs(destination, exist_ok=True)
-
-          if not os.path.isfile(archive):
-              raise SystemExit("ZIP file not found!")
-
-          with zipfile.ZipFile(archive, "r") as z:
-              z.extractall(destination)
-
-          print("ZIP extraction successful!")
-          PY
-
-      - name: Find Python Script
-        id: find_script
-        shell: bash
-        run: |
-          SCRIPT=$(find . -type f \
-            -name "generate_playlist.py" \
-            -not -path "./.git/*" \
-            | head -n 1)
-
-          if [ -z "$SCRIPT" ]; then
-            echo "ERROR: Python script not found!"
-
-            echo "Available files:"
-            find ./extracted -type f
-
-            exit 1
-          fi
-
-          echo "Found: $SCRIPT"
-          echo "script=$SCRIPT" >> "$GITHUB_OUTPUT"
-
       - name: Generate Playlist
         run: |
-          python "${{ steps.find_script.outputs.script }}"
+          python generate_playlist.py
 
-      - name: Verify Playlist
-        run: |
-          if [ ! -s IPTV/onlinetv.m3u8 ]; then
-            echo "Playlist missing or empty!"
-            exit 1
-          fi
-
-          echo "Playlist generated successfully!"
-          wc -l IPTV/onlinetv.m3u8
-
-      - name: Commit Changes
+      - name: Commit Updated Playlist
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
           git add IPTV/onlinetv.m3u8
-
-          if ! git diff --cached --quiet; then
-            git commit -m "Update IPTV Playlist"
-            git push
-          else
-            echo "No changes detected."
-          fi
+          git diff --cached --quiet || git commit -m "Update IPTV Playlist"
+          git push
