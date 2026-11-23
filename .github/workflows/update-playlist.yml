@@ -1,106 +1,101 @@
 name: IPTV Playlist BD ONLINE
 
 'on':
-workflow_dispatch:
+  workflow_dispatch:
 
-schedule:
-- cron: '0 */3 * * *'
+  schedule:
+    - cron: '0 */3 * * *'
 
-push:
-branches:
-- main
+  push:
+    branches:
+      - main
 
 permissions:
-contents: write
+  contents: write
 
 jobs:
-update-playlist:
-runs-on: ubuntu-latest
+  update-playlist:
+    runs-on: ubuntu-latest
 
-steps:
-  - name: Checkout Repository
-    uses: actions/checkout@v4
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-  - name: Setup Python
-    uses: actions/setup-python@v5
-    with:
-      python-version: '3.11'
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-  - name: Install Requirements
-    run: |
-      python -m pip install --upgrade pip
-      pip install -r requirements.txt
+      - name: Install Requirements
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-  - name: Extract ZIP Using Python
-    run: |
-      python - <<'PY'
-      import zipfile
-      import os
+      - name: Extract ZIP Using Python
+        run: |
+          python - <<'PY'
+          import zipfile
+          import os
 
-      archive = "generate_playlist.zip"
-      destination = "extracted"
+          archive = "generate_playlist.zip"
+          destination = "extracted"
 
-      os.makedirs(destination, exist_ok=True)
+          os.makedirs(destination, exist_ok=True)
 
-      if not os.path.isfile(archive):
-          raise SystemExit("ERROR: ZIP file not found!")
+          if not os.path.isfile(archive):
+              raise SystemExit("ZIP file not found!")
 
-      print("Reading ZIP archive...")
+          with zipfile.ZipFile(archive, "r") as z:
+              z.extractall(destination)
 
-      with zipfile.ZipFile(archive, "r") as z:
-          for item in z.infolist():
-              print("Extracting:", item.filename)
+          print("ZIP extraction successful!")
+          PY
 
-          z.extractall(destination)
+      - name: Find Python Script
+        id: find_script
+        shell: bash
+        run: |
+          SCRIPT=$(find . -type f \
+            -name "generate_playlist.py" \
+            -not -path "./.git/*" \
+            | head -n 1)
 
-      print("ZIP extraction completed!")
+          if [ -z "$SCRIPT" ]; then
+            echo "ERROR: Python script not found!"
 
-      PY
+            echo "Available files:"
+            find ./extracted -type f
 
-  - name: Find Python Script
-    id: find_script
-    shell: bash
-    run: |
-      SCRIPT=$(find ./extracted -type f \
-        -name "generate_playlist.py" \
-        | head -n 1)
+            exit 1
+          fi
 
-      if [ -z "$SCRIPT" ]; then
-        echo "ERROR: generate_playlist.py not found!"
+          echo "Found: $SCRIPT"
+          echo "script=$SCRIPT" >> "$GITHUB_OUTPUT"
 
-        echo "Extracted files:"
-        find ./extracted -type f
+      - name: Generate Playlist
+        run: |
+          python "${{ steps.find_script.outputs.script }}"
 
-        exit 1
-      fi
+      - name: Verify Playlist
+        run: |
+          if [ ! -s IPTV/onlinetv.m3u8 ]; then
+            echo "Playlist missing or empty!"
+            exit 1
+          fi
 
-      echo "Found script: $SCRIPT"
-      echo "script=$SCRIPT" >> "$GITHUB_OUTPUT"
+          echo "Playlist generated successfully!"
+          wc -l IPTV/onlinetv.m3u8
 
-  - name: Generate Playlist
-    run: |
-      python "${{ steps.find_script.outputs.script }}"
+      - name: Commit Changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-  - name: Verify Playlist
-    run: |
-      if [ ! -s IPTV/onlinetv.m3u8 ]; then
-        echo "ERROR: Playlist missing or empty!"
-        exit 1
-      fi
+          git add IPTV/onlinetv.m3u8
 
-      echo "Playlist generated successfully!"
-      wc -l IPTV/onlinetv.m3u8
-
-  - name: Commit Playlist
-    run: |
-      git config user.name "github-actions[bot]"
-      git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      git add IPTV/onlinetv.m3u8
-
-      if ! git diff --cached --quiet; then
-        git commit -m "Update IPTV Playlist"
-        git push
-      else
-        echo "No changes detected."
-      fi
+          if ! git diff --cached --quiet; then
+            git commit -m "Update IPTV Playlist"
+            git push
+          else
+            echo "No changes detected."
+          fi
