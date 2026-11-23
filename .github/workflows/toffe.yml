@@ -26,22 +26,82 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Check Main File
-        run: |
-          echo "Checking project files..."
-          ls -la
-          
-          if [ ! -f "PRO_OTT_BD.py" ]; then
-            echo "ERROR: PRO_OTT_BD.py not found in repository root!"
-            exit 1
-          fi
-
-          echo "Main file found!"
-
       - name: Install Requirements
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: Extract PRO_OTT_BD.py
+        env:
+          BD_OTT_ZIP_PASS: ${{ secrets.BD_OTT_ZIP_PASS }}
+        run: |
+          python - <<'PY'
+          import os
+          import pyzipper
+          import zipfile
+          from pathlib import Path
+
+          archive = Path("PRO_OTT_BD.zip")
+          password = os.environ.get("BD_OTT_ZIP_PASS", "KBIPTV")
+
+          if not archive.exists():
+              raise FileNotFoundError("PRO_OTT_BD.zip not found!")
+
+          extracted = False
+
+          try:
+              with pyzipper.AESZipFile(archive) as z:
+                  z.setpassword(password.encode())
+                  names = z.namelist()
+
+                  target = next(
+                      (n for n in names
+                       if Path(n).name == "PRO_OTT_BD.py"),
+                      None
+                  )
+
+                  if not target:
+                      raise FileNotFoundError(
+                          "PRO_OTT_BD.py not found inside ZIP!"
+                      )
+
+                  content = z.read(target)
+
+                  Path("PRO_OTT_BD.py").write_bytes(content)
+                  extracted = True
+
+          except Exception as aes_error:
+              print("AES extraction failed:", aes_error)
+
+          if not extracted:
+              with zipfile.ZipFile(archive) as z:
+                  names = z.namelist()
+
+                  target = next(
+                      (n for n in names
+                       if Path(n).name == "PRO_OTT_BD.py"),
+                      None
+                  )
+
+                  if not target:
+                      raise FileNotFoundError(
+                          "PRO_OTT_BD.py not found in ZIP!"
+                      )
+
+                  content = z.read(
+                      target,
+                      pwd=password.encode()
+                  )
+
+                  Path("PRO_OTT_BD.py").write_bytes(content)
+
+          print("Successfully extracted PRO_OTT_BD.py")
+          PY
+
+      - name: Verify Main File
+        run: |
+          ls -lh PRO_OTT_BD.py
+          python -m py_compile PRO_OTT_BD.py
 
       - name: Check Update Interval
         id: interval
@@ -85,7 +145,7 @@ jobs:
           git add Toffe/kb.m3u .last_update
 
           if ! git diff --cached --quiet; then
-            git commit -m "TOFFE_PRO: Playlist Auto Update"
+            git commit -m "TOFFE_PRO Automatic Update"
             git push
           else
             echo "No changes detected."
