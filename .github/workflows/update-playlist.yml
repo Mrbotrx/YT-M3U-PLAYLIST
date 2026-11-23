@@ -1,10 +1,10 @@
-name: Update IPTV Playlist
+name: IPTV Playlist BD ONLINE  
 
-on:
+'on':
 workflow_dispatch:
 
 schedule:
-- cron: "0 */3 * * *"
+- cron: '0 */3 * * *'
 
 push:
 branches:
@@ -18,41 +18,29 @@ update-playlist:
 runs-on: ubuntu-latest
 
 steps:
-  # 1. Checkout
   - name: Checkout Repository
     uses: actions/checkout@v4
 
-  # 2. Setup Python
   - name: Setup Python
     uses: actions/setup-python@v5
     with:
-      python-version: "3.11"
+      python-version: '3.11'
 
-  # 3. Install Dependencies
   - name: Install Requirements
     run: |
       python -m pip install --upgrade pip
       pip install -r requirements.txt
 
-  # 4. Extract ZIP
-  - name: Extract Python Script
+  - name: Extract Python ZIP
     run: |
-      echo "Checking ZIP archive..."
+      mkdir -p extracted
 
-      if [ -f "generate_playlist.zip" ]; then
+      if [ -f generate_playlist.zip ]; then
         unzip -o generate_playlist.zip -d extracted
-      else
-        echo "generate_playlist.zip not found!"
       fi
 
-      echo "Searching Python files..."
-
-      find . -type f -name "*.py" \
-        -not -path "./.git/*"
-
-  # 5. Find Python Script
-  - name: Locate Python Script
-    id: script
+  - name: Find Python Script
+    id: find_script
     shell: bash
     run: |
       SCRIPT=$(find . -type f \
@@ -61,50 +49,39 @@ steps:
         | head -n 1)
 
       if [ -z "$SCRIPT" ]; then
-        echo "Searching for another Python script..."
+        echo "ERROR: generate_playlist.py not found!"
 
-        SCRIPT=$(find ./extracted -type f \
-          -name "*.py" 2>/dev/null | head -n 1)
-      fi
+        echo "Available Python files:"
+        find . -type f -name "*.py" \
+          -not -path "./.git/*"
 
-      if [ -z "$SCRIPT" ]; then
-        echo "ERROR: No Python script found inside repository or ZIP!"
-
-        echo "ZIP CONTENTS:"
+        echo "ZIP contents:"
         unzip -l generate_playlist.zip || true
 
         exit 1
       fi
 
-      echo "Python script found: $SCRIPT"
-
+      echo "Found: $SCRIPT"
       echo "script=$SCRIPT" >> "$GITHUB_OUTPUT"
 
-  # 6. Generate Playlist
-  - name: Generate IPTV Playlist
+  - name: Generate Playlist
     run: |
-      python "${{ steps.script.outputs.script }}"
+      python "${{ steps.find_script.outputs.script }}"
 
-  # 7. Verify Output
   - name: Verify Playlist
     run: |
-      if [ ! -s "IPTV/onlinetv.m3u8" ]; then
-        echo "ERROR: Playlist missing or empty!"
+      if [ ! -s IPTV/onlinetv.m3u8 ]; then
+        echo "Playlist missing or empty!"
         exit 1
       fi
 
       echo "Playlist generated successfully!"
-
-      echo "Total lines:"
       wc -l IPTV/onlinetv.m3u8
 
-  # 8. Commit Changes
-  - name: Commit Playlist
+  - name: Commit Changes
     run: |
       git config user.name "github-actions[bot]"
-
-      git config user.email \
-        "41898282+github-actions[bot]@users.noreply.github.com"
+      git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       git add IPTV/onlinetv.m3u8
 
