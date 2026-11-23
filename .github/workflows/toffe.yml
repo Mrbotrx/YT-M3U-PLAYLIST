@@ -3,7 +3,7 @@ name: TOFFE AUTO BOT
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */6 * * *"   # every 6 hours (UTC)
+    - cron: "0 */6 * * *"
   push:
     branches: [main]
 
@@ -27,10 +27,13 @@ jobs:
           pip install pyzipper
 
       - name: Debug secret (safe)
-        if: ${{ secrets.BD_OTT_ZIP_PASS != '' }}
         env:
           P: ${{ secrets.BD_OTT_ZIP_PASS }}
         run: |
+          if [ -z "$P" ]; then
+            echo "Secret BD_OTT_ZIP_PASS is empty for this event — skipping debug."
+            exit 0
+          fi
           python - <<'PY'
           import os
           p = os.environ.get("P", "")
@@ -75,9 +78,8 @@ jobs:
               except RuntimeError as e:
                   sys.exit(
                       f"Decryption failed: {e}\n"
-                      "The BD_OTT_ZIP_PASS secret does NOT match the zip password.\n"
-                      "Fix: re-enter the secret in Settings → Secrets → Actions, "
-                      "or recreate the zip with the same password."
+                      "BD_OTT_ZIP_PASS does NOT match the zip password.\n"
+                      "Fix: update the secret, or recreate the zip with the same password."
                   )
 
           Path("PRO_OTT_BD.py").write_bytes(content)
