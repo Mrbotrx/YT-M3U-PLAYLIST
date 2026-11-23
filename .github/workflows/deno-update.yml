@@ -1,44 +1,73 @@
-name: YT M3U Playlist Update
+name: YT-M3U-PLAYLIST AUTO UPDATE
 
 on:
   workflow_dispatch:
+
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "0 * * * *"
 
 permissions:
   contents: write
+
+concurrency:
+  group: yt-m3u-playlist
+  cancel-in-progress: false
 
 jobs:
   update:
     runs-on: ubuntu-latest
 
     steps:
+
+      # CHECKOUT
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-
-      - name: Install yt-dlp
-        run: |
-          python -m pip install --upgrade yt-dlp
-
+      # INSTALL DENO
       - name: Setup Deno
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
 
-      - name: Run Deno Update
+      # INSTALL PYTHON
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      # INSTALL YT-DLP
+      - name: Install yt-dlp
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --upgrade yt-dlp
+
+      # VERIFY
+      - name: Verify Installation
+        run: |
+          deno --version
+          yt-dlp --version
+
+      # RUN PLAYLIST GENERATOR
+      - name: Update Playlist
         env:
           YT_PLAYLIST_URL: ${{ secrets.YT_PLAYLIST_URL }}
-        run: deno task update
 
+        run: |
+          deno task update
+
+      # COMMIT UPDATED FILES
       - name: Commit Playlist
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .
-          git diff --cached --quiet || git commit -m "Update YouTube playlist"
-          git push
+
+          git config user.name "KB PRO TV BOT"
+
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add YT-M3U-PLAYLIST.m3u logo.jpg
+
+          if git diff --cached --quiet; then
+            echo "No changes detected"
+          else
+            git commit -m "Auto update YT M3U playlist"
+            git push
+          fi
