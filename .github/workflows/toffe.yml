@@ -4,7 +4,6 @@ on:
   workflow_dispatch:
 
   schedule:
-    # Check every 15 minutes
     - cron: "*/15 * * * *"
 
 permissions:
@@ -16,27 +15,34 @@ concurrency:
 
 jobs:
   update:
-    name: Update Toffee Playlist
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout repository
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # Setup Python
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      # Install dependencies
+      - name: Check Main File
+        run: |
+          echo "Checking project files..."
+          ls -la
+          
+          if [ ! -f "PRO_OTT_BD.py" ]; then
+            echo "ERROR: PRO_OTT_BD.py not found in repository root!"
+            exit 1
+          fi
+
+          echo "Main file found!"
+
       - name: Install Requirements
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Check 45 minute interval
       - name: Check Update Interval
         id: interval
         run: |
@@ -46,35 +52,31 @@ jobs:
           from pathlib import Path
 
           state = Path(".last_update")
-          now = time.time()
 
           try:
               last = float(state.read_text().strip())
           except (OSError, ValueError):
               last = 0
 
-          due = (now - last) >= 2700
+          due = time.time() - last >= 2700
 
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write(f"due={str(due).lower()}\n")
 
-          print("Update due:", due)
+          print("Update required:", due)
           PY
 
-      # Generate M3U Playlist
-      - name: Generate Toffee M3U
+      - name: Generate Toffee Playlist
         if: steps.interval.outputs.due == 'true' || github.event_name == 'workflow_dispatch'
         run: |
-          python PRO_OTT_BD.py
+          python -u PRO_OTT_BD.py
 
-      # Save update timestamp
       - name: Save Update Time
         if: steps.interval.outputs.due == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           date +%s > .last_update
 
-      # Commit playlist
-      - name: Push Updated Playlist
+      - name: Commit Playlist
         if: steps.interval.outputs.due == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           git config user.name "github-actions[bot]"
@@ -83,17 +85,16 @@ jobs:
           git add Toffe/kb.m3u .last_update
 
           if ! git diff --cached --quiet; then
-            git commit -m "TOFFE_PRO: Automatic Playlist Update"
+            git commit -m "TOFFE_PRO: Playlist Auto Update"
             git push
           else
             echo "No changes detected."
           fi
 
-      # Workflow summary
-      - name: Update Summary
+      - name: Workflow Summary
         if: always()
         run: |
-          echo "## TOFFE_PRO Update" >> $GITHUB_STEP_SUMMARY
-          echo "- Output: Toffe/kb.m3u" >> $GITHUB_STEP_SUMMARY
-          echo "- Schedule: Every 45 minutes (checked every 15 minutes)" >> $GITHUB_STEP_SUMMARY
-          echo "- Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "## TOFFE_PRO" >> $GITHUB_STEP_SUMMARY
+          echo "Output: Toffe/kb.m3u" >> $GITHUB_STEP_SUMMARY
+          echo "Update Interval: 45 Minutes" >> $GITHUB_STEP_SUMMARY
+          echo "Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
