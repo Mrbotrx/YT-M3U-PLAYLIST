@@ -3,7 +3,7 @@ name: TOFFE AUTO BOT
 on:
   workflow_dispatch:
   schedule:
-    - cron: "45 * * * *"   # প্রতি ঘণ্টায় :05 মিনিটে (token fresh রাখতে)
+    - cron: "35 * * * *"
   push:
     branches: [main]
 
@@ -24,11 +24,6 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Python version check
-        run: |
-          python --version
-          which python
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -46,12 +41,11 @@ jobs:
           archive = Path("PRO_OTT_BD.zip")
           raw = os.environ.get("BD_OTT_ZIP_PASS", "")
           if not raw:
-              sys.exit("BD_OTT_ZIP_PASS secret is missing/empty for this event.")
+              sys.exit("BD_OTT_ZIP_PASS secret is missing/empty.")
           if not archive.exists():
-              sys.exit("PRO_OTT_BD.zip not found in repo root.")
+              sys.exit("PRO_OTT_BD.zip not found.")
 
           password = raw.strip().encode("utf-8")
-          print(f"Password length used: {len(password)}")
 
           with pyzipper.AESZipFile(archive, "r") as z:
               z.setpassword(password)
@@ -68,10 +62,7 @@ jobs:
               try:
                   content = z.read(target)
               except RuntimeError as e:
-                  sys.exit(
-                      f"Decryption failed: {e}\n"
-                      "BD_OTT_ZIP_PASS does NOT match the zip password."
-                  )
+                  sys.exit(f"Decryption failed: {e}")
 
           Path("PRO_OTT_BD.py").write_bytes(content)
           print(f"Extracted PRO_OTT_BD.py ({len(content)} bytes)")
@@ -89,17 +80,7 @@ jobs:
           HTTPS_PROXY: ${{ secrets.HTTPS_PROXY }}
           HTTP_PROXY:  ${{ secrets.HTTPS_PROXY }}
         run: |
-          for i in 1 2 3; do
-            echo "===== RUN ATTEMPT $i ====="
-            if python -u PRO_OTT_BD.py 2>&1 | tee run.log; then
-              echo "SUCCESS on attempt $i"
-              exit 0
-            fi
-            echo "FAILED attempt $i — retrying in 30s"
-            sleep 30
-          done
-          echo "All 3 attempts failed."
-          exit 1
+          python -u PRO_OTT_BD.py 2>&1 | tee run.log
 
       - name: Diagnose output
         if: always()
@@ -124,13 +105,11 @@ jobs:
       - name: Commit and push kb.m3u
         if: always()
         run: |
-          git config user.name  "github-actions[bot]"
+          set -e
+          git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           mkdir -p Toffe
           git add -A Toffe/
-          if git diff --cached --quiet; then
-            echo "No changes to commit."
-          else
-            git commit -m "chore: update Toffe/kb.m3u [skip ci]"
-            git push
-          fifi
+          git diff --cached --quiet && echo "No changes to commit." && exit 0
+          git commit -m "chore: update Toffe/kb.m3u [skip ci]"
+          git push
