@@ -3,14 +3,18 @@ name: TOFFE AUTO BOT
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */1 * * *"
+    - cron: "0 */6 * * *"
   push:
     branches: [main]
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 60
+
+    # ⚠️ MUST HAVE for git push to work
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -76,57 +80,42 @@ jobs:
           python -m py_compile PRO_OTT_BD.py
           echo "PRO_OTT_BD.py is ready!"
 
-      - name: Auto-install missing imports
-        run: |
-          python - <<'PY'
-          import ast, subprocess, sys
-          from pathlib import Path
-
-          PIP_NAME = {
-              "bs4": "beautifulsoup4",
-              "cv2": "opencv-python",
-              "dotenv": "python-dotenv",
-              "PIL": "Pillow",
-              "yaml": "PyYAML",
-              "sklearn": "scikit-learn",
-              "dateutil": "python-dateutil",
-              "Crypto": "pycryptodome",
-              "googleapiclient": "google-api-python-client",
-              "telegram": "python-telegram-bot",
-          }
-
-          src = Path("PRO_OTT_BD.py").read_text(encoding="utf-8", errors="replace")
-          tree = ast.parse(src)
-
-          mods = set()
-          for node in ast.walk(tree):
-              if isinstance(node, ast.Import):
-                  for a in node.names:
-                      mods.add(a.name.split(".")[0])
-              elif isinstance(node, ast.ImportFrom):
-                  if node.module and node.level == 0:
-                      mods.add(node.module.split(".")[0])
-
-          STDLIB = set(sys.stdlib_module_names)
-          missing = []
-          for m in sorted(mods):
-              if m in STDLIB or m == "__future__":
-                  continue
-              try:
-                  __import__(m)
-              except ImportError:
-                  missing.append(PIP_NAME.get(m, m))
-
-          print("Detected imports:", sorted(mods))
-          print("Missing packages:", missing)
-          if missing:
-              subprocess.check_call([sys.executable, "-m", "pip", "install", *missing])
-          else:
-              print("Nothing to install.")
-          PY
-
       - name: Run TOFFE AUTO BOT
         env:
           BD_OTT_ZIP_PASS: ${{ secrets.BD_OTT_ZIP_PASS }}
         run: |
-          python PRO_OTT_BD.py
+          set -o pipefail
+          python -u PRO_OTT_BD.py 2>&1 | tee run.log
+          echo "EXIT CODE: $?"
+
+      - name: Diagnose output
+        if: always()
+        run: |
+          echo "===== ls -la Toffe/ ====="
+          ls -la Toffe/ || echo "Toffe/ folder DOES NOT EXIST"
+          echo "===== kb.m3u head ====="
+          head -n 20 Toffe/kb.m3u || echo "kb.m3u NOT FOUND"
+          echo "===== line count ====="
+          wc -l Toffe/kb.m3u || true
+
+      - name: Upload M3U artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: toffee-m3u
+          path: Toffe/kb.m3u
+          if-no-files-found: warn
+
+      - name: Commit and push kb.m3u
+        if: always()
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p Toffe
+          git add -A Toffe/
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore: update Toffe/kb.m3u [skip ci]"
+            git push
+          fi
