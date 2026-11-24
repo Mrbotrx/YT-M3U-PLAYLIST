@@ -3,7 +3,7 @@ name: TOFFE AUTO BOT
 on:
   workflow_dispatch:
   schedule:
-    - cron: "40 * * * *"
+    - cron: "30 * * * *"
   push:
     branches: [main]
 
