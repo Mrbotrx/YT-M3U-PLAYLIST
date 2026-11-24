@@ -3,7 +3,7 @@ name: TOFFE AUTO BOT
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */6 * * *"
+    - cron: "0 */1 * * *"
   push:
     branches: [main]
 
@@ -24,23 +24,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyzipper
-
-      - name: Debug secret (safe)
-        env:
-          P: ${{ secrets.BD_OTT_ZIP_PASS }}
-        run: |
-          if [ -z "$P" ]; then
-            echo "Secret BD_OTT_ZIP_PASS is empty for this event — skipping debug."
-            exit 0
-          fi
-          python - <<'PY'
-          import os
-          p = os.environ.get("P", "")
-          print("secret exists:", bool(p))
-          print("length:", len(p))
-          print("has leading/trailing whitespace:", p != p.strip())
-          PY
+          pip install pyzipper requests
 
       - name: Extract PRO_OTT_BD.py
         env:
@@ -91,6 +75,55 @@ jobs:
           test -s PRO_OTT_BD.py
           python -m py_compile PRO_OTT_BD.py
           echo "PRO_OTT_BD.py is ready!"
+
+      - name: Auto-install missing imports
+        run: |
+          python - <<'PY'
+          import ast, subprocess, sys
+          from pathlib import Path
+
+          PIP_NAME = {
+              "bs4": "beautifulsoup4",
+              "cv2": "opencv-python",
+              "dotenv": "python-dotenv",
+              "PIL": "Pillow",
+              "yaml": "PyYAML",
+              "sklearn": "scikit-learn",
+              "dateutil": "python-dateutil",
+              "Crypto": "pycryptodome",
+              "googleapiclient": "google-api-python-client",
+              "telegram": "python-telegram-bot",
+          }
+
+          src = Path("PRO_OTT_BD.py").read_text(encoding="utf-8", errors="replace")
+          tree = ast.parse(src)
+
+          mods = set()
+          for node in ast.walk(tree):
+              if isinstance(node, ast.Import):
+                  for a in node.names:
+                      mods.add(a.name.split(".")[0])
+              elif isinstance(node, ast.ImportFrom):
+                  if node.module and node.level == 0:
+                      mods.add(node.module.split(".")[0])
+
+          STDLIB = set(sys.stdlib_module_names)
+          missing = []
+          for m in sorted(mods):
+              if m in STDLIB or m == "__future__":
+                  continue
+              try:
+                  __import__(m)
+              except ImportError:
+                  missing.append(PIP_NAME.get(m, m))
+
+          print("Detected imports:", sorted(mods))
+          print("Missing packages:", missing)
+          if missing:
+              subprocess.check_call([sys.executable, "-m", "pip", "install", *missing])
+          else:
+              print("Nothing to install.")
+          PY
 
       - name: Run TOFFE AUTO BOT
         env:
